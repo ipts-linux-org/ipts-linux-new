@@ -333,7 +333,13 @@ static void guc_ctx_desc_init(struct intel_guc *guc,
 
 	memset(&desc, 0, sizeof(desc));
 
-	desc.attribute = GUC_CTX_DESC_ATTR_ACTIVE | GUC_CTX_DESC_ATTR_KERNEL;
+	desc.attribute = GUC_CTX_DESC_ATTR_ACTIVE;
+	if ((client->priority == GUC_CTX_PRIORITY_KMD_NORMAL) ||
+			(client->priority == GUC_CTX_PRIORITY_KMD_HIGH)) {
+		desc.attribute  |= GUC_CTX_DESC_ATTR_KERNEL;
+	} else {
+		desc.attribute  |= GUC_CTX_DESC_ATTR_PCH;
+	}
 	desc.context_id = client->ctx_index;
 	desc.priority = client->priority;
 	desc.db_id = client->doorbell_id;
@@ -1098,6 +1104,47 @@ int intel_guc_suspend(struct drm_device *dev)
 	return host2guc_action(guc, data, ARRAY_SIZE(data));
 }
 
+int i915_guc_ipts_submission_enable(struct drm_i915_private *dev_priv,
+				    struct i915_gem_context *ctx)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+	struct i915_guc_client *client;
+
+	/* client for execbuf submission */
+	client = guc_client_alloc(dev_priv,
+				  INTEL_INFO(dev_priv)->ring_mask,
+				  GUC_CTX_PRIORITY_NORMAL,
+				  ctx);
+	if (!client) {
+		DRM_ERROR("Failed to create normal GuC client!\n");
+		return -ENOMEM;
+	}
+
+	guc->ipts_client = client;
+	host2guc_sample_forcewake(guc, client);
+	guc_init_doorbell_hw(guc);
+
+	return 0;
+}
+
+void i915_guc_ipts_submission_disable(struct drm_i915_private *dev_priv)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+
+	if (!guc->ipts_client)
+		return;
+
+	guc_client_free(dev_priv, guc->ipts_client);
+	guc->ipts_client = NULL;
+}
+
+void i915_guc_ipts_reacquire_doorbell(struct drm_i915_private *dev_priv)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+
+	if (host2guc_allocate_doorbell(guc, guc->ipts_client))
+		DRM_ERROR("Not able to reacquire IPTS doorbell\n");
+}
 
 /**
  * intel_guc_resume() - notify GuC resuming from suspend state

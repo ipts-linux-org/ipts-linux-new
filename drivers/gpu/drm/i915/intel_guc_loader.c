@@ -126,7 +126,8 @@ static void guc_interrupts_capture(struct drm_i915_private *dev_priv)
 		I915_WRITE(RING_MODE_GEN7(engine), irqs);
 
 	/* route USER_INTERRUPT to Host, all others are sent to GuC. */
-	irqs = GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT |
+	irqs = (GT_RENDER_USER_INTERRUPT | GT_RENDER_PIPECTL_NOTIFY_INTERRUPT)
+							<< GEN8_RCS_IRQ_SHIFT |
 	       GT_RENDER_USER_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
 	/* These three registers have the same bit definitions */
 	I915_WRITE(GUC_BCS_RCS_IER, ~irqs);
